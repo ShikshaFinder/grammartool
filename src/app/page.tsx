@@ -1,101 +1,169 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "../../supabase";
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: process.env.NEXT_PUBLIC_GPT_API_KEY,
+  baseURL: "https://integrate.api.nvidia.com/v1",
+});
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [email, setEmail] = useState("");
+  const [isEmailSubmitted, setIsEmailSubmitted] = useState(false);
+  const [text, setText] = useState("");
+  const [result, setResult] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+  useEffect(() => {
+    // Check if email exists in localStorage
+    const storedEmail = localStorage.getItem("userEmail");
+    if (storedEmail) {
+      setEmail(storedEmail);
+      setIsEmailSubmitted(true);
+    }
+  }, []);
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    try {
+      // Store email in Supabase
+      const { error: supabaseError } = await supabase
+        .from("emailg")
+        .insert([{ email: email }]);
+
+      if (supabaseError) throw supabaseError;
+
+      // If successful, store in localStorage and update state
+      localStorage.setItem("userEmail", email);
+      setIsEmailSubmitted(true);
+    } catch (err: any) {
+      setError(err.message || "Failed to store email");
+      console.error("Error storing email:", err);
+    }
+  };
+
+  const handleTextOperation = async (operation: string) => {
+    if (!text.trim()) {
+      setError("Please enter some text first");
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+
+    try {
+      let prompt = "";
+      switch (operation) {
+        case "summarize":
+          prompt = `Please summarize the following text:\n${text}`;
+          break;
+        case "grammar":
+          prompt = `Please correct any grammar mistakes in the following text:\n${text}`;
+          break;
+        case "rewrite":
+          prompt = `Please rewrite the following text in a better way while keeping the same meaning:\n${text}`;
+          break;
+        case "enlarge":
+          prompt = `Please expand the following text with more details and explanations:\n${text}`;
+          break;
+      }
+
+      const completion = await openai.chat.completions.create({
+        model: "nvidia/llama-3.1-nemotron-70b-instruct",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.5,
+        top_p: 1,
+        max_tokens: 1024,
+      });
+
+      setResult(
+        completion.choices[0]?.message?.content || "No result generated"
+      );
+    } catch (err: any) {
+      setError(err.message || "Failed to process text");
+      console.error("Error processing text:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (!isEmailSubmitted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="max-w-md w-full space-y-8 p-8 bg-white border border-gray-200 rounded-xl shadow-sm">
+          <h2 className="text-center text-3xl font-bold text-black">
+            Welcome to QuickGrammar
+          </h2>
+          <form onSubmit={handleEmailSubmit} className="mt-8 space-y-6">
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-black focus:border-transparent"
+              placeholder="Enter your email"
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            {error && <p className="text-red-500 text-sm mt-1">{error}</p>}
+            <button
+              type="submit"
+              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black"
+            >
+              Continue
+            </button>
+          </form>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen p-8 bg-white">
+      <div className="max-w-4xl mx-auto space-y-8">
+        <div className="bg-white border border-gray-200 p-6 rounded-xl shadow-sm">
+          <div className="flex justify-between items-center mb-4">
+            <h1 className="text-2xl font-bold text-black">Text Tools</h1>
+            <p className="text-sm text-gray-600">{email}</p>
+          </div>
+
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            className="w-full h-64 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+            placeholder="Enter your text here..."
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+          {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+
+          <div className="grid grid-cols-2 gap-4 mt-4 sm:grid-cols-4">
+            {["Summarize", "Fix Grammar", "Rewrite", "Enlarge"].map((op) => (
+              <button
+                key={op}
+                onClick={() =>
+                  handleTextOperation(op.toLowerCase().replace(" ", ""))
+                }
+                disabled={isLoading}
+                className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed border border-transparent"
+              >
+                {isLoading ? "Processing..." : op}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {result && (
+          <div className="bg-white border border-gray-200 p-6 rounded-xl shadow-sm">
+            <h2 className="text-xl font-bold text-black mb-4">Result</h2>
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+              <p className="text-gray-800 whitespace-pre-wrap">{result}</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
