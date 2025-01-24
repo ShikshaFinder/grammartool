@@ -2,12 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "../../supabase";
-import OpenAI from "openai";
-
-const openai = new OpenAI({
-  apiKey: process.env.NEXT_PUBLIC_GPT_API_KEY,
-  baseURL: "https://integrate.api.nvidia.com/v1",
-});
 
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -57,33 +51,21 @@ export default function Home() {
     setError("");
 
     try {
-      let prompt = "";
-      switch (operation) {
-        case "summarize":
-          prompt = `Please summarize the following text:\n${text}`;
-          break;
-        case "grammar":
-          prompt = `Please correct any grammar mistakes in the following text:\n${text}`;
-          break;
-        case "rewrite":
-          prompt = `Please rewrite the following text in a better way while keeping the same meaning:\n${text}`;
-          break;
-        case "enlarge":
-          prompt = `Please expand the following text with more details and explanations:\n${text}`;
-          break;
-      }
-
-      const completion = await openai.chat.completions.create({
-        model: "nvidia/llama-3.1-nemotron-70b-instruct",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.5,
-        top_p: 1,
-        max_tokens: 1024,
+      const response = await fetch("/api/process-text", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text, operation }),
       });
 
-      setResult(
-        completion.choices[0]?.message?.content || "No result generated"
-      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to process text");
+      }
+
+      setResult(data.result);
     } catch (err: any) {
       setError(err.message || "Failed to process text");
       console.error("Error processing text:", err);
@@ -133,7 +115,7 @@ export default function Home() {
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            className="w-full h-64 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+            className="w-full h-64 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent text-gray-900 bg-white"
             placeholder="Enter your text here..."
           />
 
@@ -144,7 +126,9 @@ export default function Home() {
               <button
                 key={op}
                 onClick={() =>
-                  handleTextOperation(op.toLowerCase().replace(" ", ""))
+                  handleTextOperation(
+                    op === "Fix Grammar" ? "grammar" : op.toLowerCase()
+                  )
                 }
                 disabled={isLoading}
                 className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed border border-transparent"
